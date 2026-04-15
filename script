@@ -3,7 +3,7 @@ local Settings = {
     -- MOB SETTINGS
     TargetMobs = {"Golem", "Witch Queen", "Licht"}, 
     HitsPerMob = 1,                           
-    AttackDelay = 2,                       
+    AttackDelay = 0.5,                       
     RefreshRate = 1,                        
 
     -- SKILL SETTINGS
