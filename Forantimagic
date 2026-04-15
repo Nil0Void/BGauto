@@ -1,0 +1,174 @@
+-- // CONFIGURATION // --
+local Settings = {
+    -- MOB SETTINGS
+    TargetMobs = {"Golem", "Witch", "Licht"}, 
+    HitsPerMob = 2,                           
+    AttackDelay = 0.01,                       
+    RefreshRate = 0.2,                        
+
+    -- SKILL SETTINGS
+    SkillName = "Attack",               
+
+    -- QUEST SETTINGS
+    QuestName = "DefeatGolem",
+    QuestRepeatDelay = 1 -- Seconds between firing the quest remote to keep it active
+}
+
+-- // SERVICES // --
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local player = Players.LocalPlayer
+
+-- // UI SETUP // --
+-- Clean up any old versions before running
+local oldGui = player:WaitForChild("PlayerGui"):FindFirstChild("MasterFarmGui")
+if oldGui then oldGui:Destroy() end
+
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "MasterFarmGui"
+screenGui.Parent = player:WaitForChild("PlayerGui")
+screenGui.ResetOnSpawn = false
+
+local mainBtn = Instance.new("TextButton")
+mainBtn.Name = "ToggleButton"
+mainBtn.Parent = screenGui
+mainBtn.Size = UDim2.new(0, 200, 0, 50)
+mainBtn.Position = UDim2.new(0.5, -100, 0.85, 0)
+mainBtn.BackgroundColor3 = Color3.fromRGB(150, 0, 0)
+mainBtn.Text = "MASTER FARM: OFF"
+mainBtn.TextColor3 = Color3.new(1, 1, 1)
+mainBtn.Font = Enum.Font.SourceSansBold
+mainBtn.TextSize = 16
+mainBtn.ClipsDescendants = true
+
+local uiCorner = Instance.new("UICorner")
+uiCorner.CornerRadius = UDim.new(0, 10)
+uiCorner.Parent = mainBtn
+
+-- // DRAGGABLE LOGIC // --
+local dragging, dragStart, startPos
+mainBtn.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = true; dragStart = input.Position; startPos = mainBtn.Position
+    end
+end)
+UserInputService.InputChanged:Connect(function(input)
+    if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+        local delta = input.Position - dragStart
+        mainBtn.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+end)
+UserInputService.InputEnded:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end end)
+
+-- // FUNCTIONS // --
+local function getTargetFolder()
+    for _, child in ipairs(workspace:GetChildren()) do
+        if child.Name:sub(1, 11) == "BadEntities" then return child end
+    end
+end
+
+local function equipSkill()
+    local character = player.Character
+    local backpack = player:FindFirstChild("Backpack")
+    if character and backpack then
+        local tool = backpack:FindFirstChild(Settings.SkillName)
+        if tool then character:WaitForChild("Humanoid"):EquipTool(tool) end
+    end
+end
+
+local function fireQuestRemote()
+    local mainRemote = ReplicatedStorage:FindFirstChild("MainRemote")
+    if mainRemote then
+        local args = {
+            "pcgamer5",
+            {
+                Extra = Settings.QuestName,
+                Type = "questpls",
+                Repeat = true
+            }
+        }
+        mainRemote:FireServer(unpack(args))
+    end
+end
+
+-- // CORE LOOP // --
+local toggled = false
+local attackedHistory = {}
+local lastQuestFire = 0
+
+task.spawn(function()
+    while true do
+        if toggled then
+            local character = player.Character
+            local skillTool = character and character:FindFirstChild(Settings.SkillName)
+            local remote = skillTool and skillTool:FindFirstChild("RemoteEvent")
+            local folder = getTargetFolder()
+            
+            -- 1. Periodic Quest Refresh
+            if tick() - lastQuestFire >= Settings.QuestRepeatDelay then
+                fireQuestRemote()
+                lastQuestFire = tick()
+            end
+
+            -- 2. Ensure Skill stays equipped
+            if character and not skillTool then
+                equipSkill()
+            end
+
+            -- 3. Attack Execution
+            if remote and folder then
+                local foundLiveMob = false
+                
+                for _, mob in ipairs(folder:GetChildren()) do
+                    local hum = mob:FindFirstChildOfClass("Humanoid")
+                    local hrp = mob:FindFirstChild("HumanoidRootPart")
+                    
+                    if table.find(Settings.TargetMobs, mob.Name) and hum and hrp then
+                        if hum.Health > 0 then
+                            attackedHistory[mob] = attackedHistory[mob] or 0
+                            
+                            if attackedHistory[mob] < Settings.HitsPerMob then
+                                foundLiveMob = true
+                                
+                                -- Sequential Hits
+                                for i = 1, (Settings.HitsPerMob - attackedHistory[mob]) do
+                                    -- Re-check health and folder existence before every hit
+                                    if hum.Health <= 0 or not mob.Parent then 
+                                        fireQuestRemote() -- Catch quest update on death
+                                        break 
+                                    end
+                                    
+                                    remote:FireServer("Letter H", hrp.CFrame)
+                                    attackedHistory[mob] = attackedHistory[mob] + 1
+                                    task.wait(Settings.AttackDelay)
+                                end
+                            end
+                        end
+                    end
+                end
+                
+                -- Clear history when all mobs are handled to prepare for respawns
+                if not foundLiveMob then
+                    attackedHistory = {}
+                end
+            end
+        end
+        task.wait(Settings.RefreshRate)
+    end
+end)
+
+-- // BUTTON TOGGLE // --
+mainBtn.MouseButton1Click:Connect(function()
+    toggled = not toggled
+    attackedHistory = {} -- Clear history when toggled
+    
+    if toggled then
+        fireQuestRemote() -- Instant start
+        mainBtn.Text = "MASTER FARM: ON"
+        mainBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 0)
+    else
+        mainBtn.Text = "MASTER FARM: OFF"
+        mainBtn.BackgroundColor3 = Color3.fromRGB(150, 0, 0)
+    end
+end)
