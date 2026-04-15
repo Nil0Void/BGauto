@@ -2,7 +2,7 @@
 local Settings = {
     -- MOB SETTINGS
     TargetMobs = {"Golem", "Witch", "Licht"}, 
-    HitsPerMob = 1,                           
+    HitsPerMob = 10,                           
     AttackDelay = 0.05,                       
     RefreshRate = 0.2,                        
 
