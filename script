@@ -4,7 +4,7 @@ local Settings = {
     TargetMobs = {"Golem", "Witch Queen", "Licht"}, 
     HitsPerMob = 1,                           
     AttackDelay = 0.02,                       
-    RefreshRate = 4,                        
+    RefreshRate = 2,                        
 
     -- SKILL SETTINGS
     SkillName = "Time Spheres",               
