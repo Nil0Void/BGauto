@@ -2,11 +2,10 @@
 local Settings = {
     TargetMobs = {"Golem", "Witch", "Licht"}, 
     SkillName = "Time Spheres",               
-    HitsPerMob = 5,                           
+    HitsPerMob = 1,                           
     AttackDelay = 0.05,                       
     RefreshRate = 0.2,                        
-    QuestName = "DefeatGolem",
-    QuestRepeatDelay = 3 -- Fires quest remote every 3s to ensure it stays active
+    QuestName = "DefeatGolem" -- The specific quest extra data
 }
 
 -- // SERVICES // --
@@ -45,7 +44,7 @@ UserInputService.InputChanged:Connect(function(input)
 end)
 UserInputService.InputEnded:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end end)
 
--- // FUNCTIONS // --
+-- // HELPER FUNCTIONS // --
 local function getTargetFolder()
     for _, child in ipairs(workspace:GetChildren()) do
         if child.Name:sub(1, 11) == "BadEntities" then return child end
@@ -57,7 +56,9 @@ local function equipSkill()
     local backpack = player:FindFirstChild("Backpack")
     if character and backpack then
         local tool = backpack:FindFirstChild(Settings.SkillName)
-        if tool then character:WaitForChild("Humanoid"):EquipTool(tool) end
+        if tool then
+            character:WaitForChild("Humanoid"):EquipTool(tool)
+        end
     end
 end
 
@@ -76,10 +77,9 @@ local function fireQuestRemote()
     end
 end
 
--- // LOOPS // --
+-- // MAIN LOOP // --
 local toggled = false
 local attackedHistory = {}
-local lastQuestFire = 0
 
 task.spawn(function()
     while true do
@@ -88,17 +88,12 @@ task.spawn(function()
             local remote = character and character:FindFirstChild(Settings.SkillName) and character[Settings.SkillName]:FindFirstChild("RemoteEvent")
             local folder = getTargetFolder()
             
-            -- Periodic Quest Loop (Ensures quest is always active)
-            if tick() - lastQuestFire >= Settings.QuestRepeatDelay then
-                fireQuestRemote()
-                lastQuestFire = tick()
-            end
-
-            -- Auto-Equip
+            -- 1. Ensure Skill is Equipped
             if character and not character:FindFirstChild(Settings.SkillName) then
                 equipSkill()
             end
 
+            -- 2. Attack Logic
             if remote and folder then
                 local foundLiveMob = false
                 
@@ -113,15 +108,18 @@ task.spawn(function()
                             if attackedHistory[mob] < Settings.HitsPerMob then
                                 foundLiveMob = true
                                 
+                                -- Attack Sequence
                                 for i = 1, (Settings.HitsPerMob - attackedHistory[mob]) do
                                     if hum.Health <= 0 then 
-                                        fireQuestRemote() -- Instant re-quest on death
+                                        -- Mob died! Fire quest remote to ensure it's still active/redeemed
+                                        fireQuestRemote() 
                                         break 
                                     end
                                     
                                     remote:FireServer("Letter H", hrp.CFrame)
                                     attackedHistory[mob] = attackedHistory[mob] + 1
-                                    task.wait(Settings.AttackDelay)
+                                    
+                                    if Settings.AttackDelay > 0 then task.wait(Settings.AttackDelay) end
                                 end
                             end
                         end
@@ -130,6 +128,8 @@ task.spawn(function()
                 
                 if not foundLiveMob then
                     attackedHistory = {}
+                    -- Fire quest remote when the room is empty to pick it back up
+                    fireQuestRemote()
                 end
             end
         end
@@ -143,11 +143,135 @@ mainBtn.MouseButton1Click:Connect(function()
     attackedHistory = {}
     
     if toggled then
-        fireQuestRemote()
+        fireQuestRemote() -- Start the quest immediately on toggle ON
         mainBtn.Text = "FARM: ON"
         mainBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 0)
     else
         mainBtn.Text = "FARM: OFF"
         mainBtn.BackgroundColor3 = Color3.fromRGB(150, 0, 0)
     end
+end)-- // CONFIGURATION // --
+local Settings = {
+    TargetMobs = {"Golem", "Witch", "Licht"}, -- Add/Remove mob names here
+    SkillName = "Time Spheres",               -- Name of the tool in your backpack
+    HitsPerMob = 1,                           -- Max times to hit a single mob
+    AttackDelay = 0.05,                       -- Delay between hits
+    RefreshRate = 0.2                         -- How fast to scan for new mobs
+}
+
+-- // SERVICES // --
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local player = Players.LocalPlayer
+
+-- // UI SETUP // --
+local screenGui = Instance.new("ScreenGui", player:WaitForChild("PlayerGui"))
+screenGui.Name = "MobToggleGui"
+screenGui.ResetOnSpawn = false
+
+local mainBtn = Instance.new("TextButton", screenGui)
+mainBtn.Size = UDim2.new(0, 160, 0, 45)
+mainBtn.Position = UDim2.new(0.5, -80, 0.8, 0)
+mainBtn.BackgroundColor3 = Color3.fromRGB(150, 0, 0)
+mainBtn.Text = "AUTO-ATTACK: OFF"
+mainBtn.TextColor3 = Color3.new(1, 1, 1)
+mainBtn.Font = Enum.Font.SourceSansBold
+mainBtn.TextSize = 14
+Instance.new("UICorner", mainBtn)
+
+-- // DRAGGABLE UI // --
+local dragging, dragStart, startPos
+mainBtn.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = true; dragStart = input.Position; startPos = mainBtn.Position
+    end
+end)
+UserInputService.InputChanged:Connect(function(input)
+    if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+        local delta = input.Position - dragStart
+        mainBtn.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+end)
+UserInputService.InputEnded:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end end)
+
+-- // HELPER FUNCTIONS // --
+local function getTargetFolder()
+    for _, child in ipairs(workspace:GetChildren()) do
+        if child.Name:sub(1, 11) == "BadEntities" then return child end
+    end
+end
+
+local function equipSkill()
+    local character = player.Character
+    local backpack = player:FindFirstChild("Backpack")
+    if character and backpack then
+        local tool = backpack:FindFirstChild(Settings.SkillName)
+        if tool then
+            character:WaitForChild("Humanoid"):EquipTool(tool)
+        end
+    end
+end
+
+-- // MAIN LOOP // --
+local toggled = false
+local attackedHistory = {}
+
+task.spawn(function()
+    while true do
+        if toggled then
+            local character = player.Character
+            local remote = character and character:FindFirstChild(Settings.SkillName) and character[Settings.SkillName]:FindFirstChild("RemoteEvent")
+            local folder = getTargetFolder()
+            
+            -- Auto-Equip Check
+            if character and not character:FindFirstChild(Settings.SkillName) then
+                equipSkill()
+            end
+
+            if remote and folder then
+                local foundLiveMob = false
+                
+                for _, mob in ipairs(folder:GetChildren()) do
+                    local hum = mob:FindFirstChildOfClass("Humanoid")
+                    local hrp = mob:FindFirstChild("HumanoidRootPart")
+                    
+                    if table.find(Settings.TargetMobs, mob.Name) and hum and hrp then
+                        -- Check if mob is actually alive
+                        if hum.Health > 0 then
+                            attackedHistory[mob] = attackedHistory[mob] or 0
+                            
+                            if attackedHistory[mob] < Settings.HitsPerMob then
+                                foundLiveMob = true
+                                
+                                -- Attack Loop for specific mob
+                                for i = 1, (Settings.HitsPerMob - attackedHistory[mob]) do
+                                    -- Check health again before each individual hit
+                                    if hum.Health <= 0 then break end
+                                    
+                                    remote:FireServer("Letter H", hrp.CFrame)
+                                    attackedHistory[mob] = attackedHistory[mob] + 1
+                                    
+                                    if Settings.AttackDelay > 0 then task.wait(Settings.AttackDelay) end
+                                end
+                            end
+                        end
+                    end
+                end
+                
+                -- Reset list if all targets in the folder are dead or finished
+                if not foundLiveMob then
+                    attackedHistory = {}
+                end
+            end
+        end
+        task.wait(Settings.RefreshRate)
+    end
+end)
+
+-- // TOGGLE BUTTON // --
+mainBtn.MouseButton1Click:Connect(function()
+    toggled = not toggled
+    attackedHistory = {}
+    mainBtn.Text = toggled and "AUTO-ATTACK: ON" or "AUTO-ATTACK: OFF"
+    mainBtn.BackgroundColor3 = toggled and Color3.fromRGB(0, 150, 0) or Color3.fromRGB(150, 0, 0)
 end)
