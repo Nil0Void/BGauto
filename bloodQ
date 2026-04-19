@@ -10,7 +10,7 @@ local Settings = {
     SkillName = "Syringe",               
 
     -- QUEST SETTINGS
-    QuestName = "DefeatGolem",
+    QuestName = "Collect Blood",
     QuestRepeatDelay = 1 -- Seconds between firing the quest remote to keep it active
 }
 
