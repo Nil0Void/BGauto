@@ -1,0 +1,252 @@
+-- // CONFIGURATION // --
+local Settings = {
+    TargetMobs = {},
+    HitsPerMob = 1,
+    AttackDelay = 0.01,
+    RefreshRate = 1,
+
+    SkillName = "Syringe",
+    QuestName = "CollectBlood",
+    QuestRepeatDelay = 1
+}
+
+-- // SERVICES // --
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local player = Players.LocalPlayer
+
+-- // CLEAN OLD UI // --
+local oldGui = player:WaitForChild("PlayerGui"):FindFirstChild("MasterFarmGui")
+if oldGui then oldGui:Destroy() end
+
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "MasterFarmGui"
+screenGui.Parent = player.PlayerGui
+screenGui.ResetOnSpawn = false
+
+-- // MAIN BUTTON // --
+local mainBtn = Instance.new("TextButton")
+mainBtn.Size = UDim2.new(0, 200, 0, 50)
+mainBtn.Position = UDim2.new(0.5, -100, 0.85, 0)
+mainBtn.BackgroundColor3 = Color3.fromRGB(150, 0, 0)
+mainBtn.Text = "MASTER FARM: OFF"
+mainBtn.TextColor3 = Color3.new(1,1,1)
+mainBtn.Parent = screenGui
+
+-- // PANEL // --
+local panel = Instance.new("Frame")
+panel.Size = UDim2.new(0, 220, 0, 200)
+panel.Position = UDim2.new(0.05, 0, 0.3, 0)
+panel.BackgroundColor3 = Color3.fromRGB(25,25,25)
+panel.Parent = screenGui
+
+local layout = Instance.new("UIListLayout")
+layout.Parent = panel
+layout.Padding = UDim.new(0,6)
+
+-- // INPUTS // --
+local function createBox(placeholder, default)
+    local box = Instance.new("TextBox")
+    box.Size = UDim2.new(1, -10, 0, 30)
+    box.PlaceholderText = placeholder
+    box.Text = default
+    box.BackgroundColor3 = Color3.fromRGB(50,50,50)
+    box.TextColor3 = Color3.new(1,1,1)
+    box.Parent = panel
+    return box
+end
+
+local skillBox = createBox("Skill Name", Settings.SkillName)
+skillBox.FocusLost:Connect(function()
+    Settings.SkillName = skillBox.Text
+end)
+
+local questBox = createBox("Quest Name", Settings.QuestName)
+questBox.FocusLost:Connect(function()
+    Settings.QuestName = questBox.Text
+end)
+
+-- // SLIDER (FIXED) // --
+local sliderFrame = Instance.new("Frame")
+sliderFrame.Size = UDim2.new(1, -10, 0, 20)
+sliderFrame.BackgroundColor3 = Color3.fromRGB(60,60,60)
+sliderFrame.Parent = panel
+
+local fill = Instance.new("Frame")
+fill.Size = UDim2.new(0.5,0,1,0)
+fill.BackgroundColor3 = Color3.fromRGB(0,170,255)
+fill.Parent = sliderFrame
+
+local sliderDragging = false
+
+local function updateSpeed(x)
+    local width = sliderFrame.AbsoluteSize.X
+    if width <= 0 then return end
+
+    local alpha = math.clamp(x / width, 0.05, 1)
+    fill.Size = UDim2.new(alpha,0,1,0)
+
+    Settings.AttackDelay = 0.2 * (1 - alpha)
+end
+
+sliderFrame.InputBegan:Connect(function(i)
+    if i.UserInputType == Enum.UserInputType.MouseButton1 then
+        sliderDragging = true
+        updateSpeed(i.Position.X - sliderFrame.AbsolutePosition.X)
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(i)
+    if sliderDragging and i.UserInputType == Enum.UserInputType.MouseMovement then
+        updateSpeed(i.Position.X - sliderFrame.AbsolutePosition.X)
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(i)
+    if i.UserInputType == Enum.UserInputType.MouseButton1 then
+        sliderDragging = false
+    end
+end)
+
+-- // DROPDOWN (FIXED - NO DUPLICATES) // --
+local dropdownFrame = Instance.new("Frame")
+dropdownFrame.Size = UDim2.new(0,200,0,150)
+dropdownFrame.Position = UDim2.new(0.5,-100,0.85,-160)
+dropdownFrame.BackgroundColor3 = Color3.fromRGB(30,30,30)
+dropdownFrame.Parent = screenGui
+
+local selectedMobs = {}
+
+local function clearDropdown()
+    for _, c in ipairs(dropdownFrame:GetChildren()) do
+        if c:IsA("TextButton") then
+            c:Destroy()
+        end
+    end
+end
+
+local function rebuildDropdown(folder)
+    if not folder then return end
+
+    clearDropdown()
+
+    for _, mob in ipairs(folder:GetChildren()) do
+        local btn = Instance.new("TextButton")
+        btn.Size = UDim2.new(1,0,0,25)
+        btn.Text = mob.Name
+        btn.BackgroundColor3 = Color3.fromRGB(60,60,60)
+        btn.TextColor3 = Color3.new(1,1,1)
+        btn.Parent = dropdownFrame
+
+        btn.MouseButton1Click:Connect(function()
+            if selectedMobs[mob.Name] then
+                selectedMobs[mob.Name] = nil
+                btn.BackgroundColor3 = Color3.fromRGB(60,60,60)
+            else
+                selectedMobs[mob.Name] = true
+                btn.BackgroundColor3 = Color3.fromRGB(0,170,0)
+            end
+        end)
+    end
+end
+
+-- // DRAG BUTTON FIXED // --
+local buttonDragging = false
+local dragStart, startPos
+
+mainBtn.InputBegan:Connect(function(i)
+    if i.UserInputType == Enum.UserInputType.MouseButton1 then
+        buttonDragging = true
+        dragStart = i.Position
+        startPos = mainBtn.Position
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(i)
+    if buttonDragging and i.UserInputType == Enum.UserInputType.MouseMovement then
+        local delta = i.Position - dragStart
+        mainBtn.Position = UDim2.new(
+            startPos.X.Scale,
+            startPos.X.Offset + delta.X,
+            startPos.Y.Scale,
+            startPos.Y.Offset + delta.Y
+        )
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(i)
+    if i.UserInputType == Enum.UserInputType.MouseButton1 then
+        buttonDragging = false
+    end
+end)
+
+-- // CORE LOOP // --
+local toggled = false
+local attackedHistory = {}
+local lastQuest = 0
+
+local function getFolder()
+    for _, v in ipairs(workspace:GetChildren()) do
+        if v.Name:sub(1,11) == "BadEntities" then
+            return v
+        end
+    end
+end
+
+task.spawn(function()
+    while true do
+        if toggled then
+            local folder = getFolder()
+            local char = player.Character
+            local tool = char and char:FindFirstChild(Settings.SkillName)
+            local remote = tool and tool:FindFirstChild("RemoteEvent")
+
+            if tick() - lastQuest >= Settings.QuestRepeatDelay then
+                local r = ReplicatedStorage:FindFirstChild("MainRemote")
+                if r then
+                    r:FireServer("pcgamer5", {Extra = Settings.QuestName, Type="questpls", Repeat=true})
+                end
+                lastQuest = tick()
+            end
+
+            if folder then
+                rebuildDropdown(folder)
+
+                local mobs = folder:GetChildren()
+
+                for _, mob in ipairs(mobs) do
+                    local hum = mob:FindFirstChildOfClass("Humanoid")
+                    local hrp = mob:FindFirstChild("HumanoidRootPart")
+
+                    if selectedMobs[mob.Name] and hum and hrp and hum.Health > 0 then
+                        attackedHistory[mob] = attackedHistory[mob] or 0
+
+                        if remote and attackedHistory[mob] < Settings.HitsPerMob then
+                            remote:FireServer("Letter H", hrp.CFrame)
+                            attackedHistory[mob] += 1
+                            task.wait(Settings.AttackDelay)
+                        end
+                    end
+                end
+            end
+        end
+
+        task.wait(Settings.RefreshRate)
+    end
+end)
+
+-- // TOGGLE // --
+mainBtn.MouseButton1Click:Connect(function()
+    toggled = not toggled
+    attackedHistory = {}
+
+    if toggled then
+        mainBtn.Text = "MASTER FARM: ON"
+        mainBtn.BackgroundColor3 = Color3.fromRGB(0,150,0)
+    else
+        mainBtn.Text = "MASTER FARM: OFF"
+        mainBtn.BackgroundColor3 = Color3.fromRGB(150,0,0)
+    end
+end)
